@@ -6,8 +6,7 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsc",
-    "postinstall": "prisma generate || true",
+    "build": "prisma generate && tsc",
     "start": "node dist/server.js",
     "start:prod": "NODE_ENV=production node dist/server.js",
     "tunnel": "ngrok http 3000",
