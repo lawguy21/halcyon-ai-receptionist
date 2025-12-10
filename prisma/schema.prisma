@@ -1,0 +1,291 @@
+// Halcyon AI Receptionist - Database Schema
+// Prisma schema for PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// INTAKE RECORDS
+// ============================================
+
+model Intake {
+  id        String   @id @default(cuid())
+  callId    String   @unique
+  intakeId  String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Call Metadata
+  callDuration    Int?
+  callerPhone     String
+  recordingUrl    String?
+  transcriptUrl   String?
+
+  // Client Information
+  firstName       String?
+  lastName        String?
+  dateOfBirth     DateTime?
+  age             Int?
+  email           String?
+  city            String?
+  state           String?
+
+  // Education
+  educationLevel  String?
+  educationDetails String?
+
+  // Medical Information (JSON)
+  conditions      Json     @default("[]")  // string[]
+  severity        String?
+  durationMonths  Int?
+  treatments      Json     @default("[]")  // string[]
+  hospitalizations Int     @default(0)
+  medications     Json     @default("[]")  // string[]
+  sideEffects     Json     @default("[]")  // string[]
+
+  // Functional Limitations (JSON)
+  functionalLimitations Json @default("{}")
+
+  // Work History (JSON)
+  workHistory     Json     @default("[]")  // WorkHistoryEntry[]
+  totalWorkYears  Int?
+  lastWorkDate    DateTime?
+  currentlyWorking Boolean @default(false)
+  heaviestLifting String?
+
+  // Application Status
+  applicationStatus String?
+  denialDate       DateTime?
+  hearingDate      DateTime?
+  appealDeadline   DateTime?
+
+  // Scoring
+  totalScore      Int      @default(0)
+  recommendation  String?
+  viabilityRating String?
+  approvalLikelihood String?
+  scoreBreakdown  Json     @default("{}")
+  caseStrengths   Json     @default("[]")  // string[]
+  caseConcerns    Json     @default("[]")  // string[]
+
+  // Transcript (JSON array)
+  transcript      Json     @default("[]")
+
+  // Flags
+  isUrgent        Boolean  @default(false)
+  urgentReason    String?
+  crisisMentioned Boolean  @default(false)
+  transferRequested Boolean @default(false)
+
+  // SMS Consent (TCPA Compliance)
+  smsConsentGiven    Boolean  @default(false)
+  smsConsentTimestamp DateTime?
+  smsConsentPhone    String?
+  smsConsentMethod   String?  // "verbal_during_intake_call"
+
+  // Follow-up
+  smsSent         Boolean  @default(false)
+  smsTimestamp    DateTime?
+  callbackScheduled Boolean @default(false)
+  callbackDate    DateTime?
+  assignedAttorney String?
+  assignedParalegal String?
+
+  // Status
+  status          IntakeStatus @default(NEW)
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  disposition     String?
+
+  // Notes
+  aiNotes         String?
+  humanNotes      String?
+  attorneyNotes   String?
+
+  // Relations
+  tasks           Task[]
+  activities      Activity[]
+
+  @@index([status])
+  @@index([totalScore])
+  @@index([createdAt])
+  @@index([isUrgent])
+  @@index([callerPhone])
+}
+
+enum IntakeStatus {
+  NEW
+  PENDING_REVIEW
+  REVIEWED
+  ACCEPTED
+  DECLINED
+  CONVERTED
+  ARCHIVED
+}
+
+// ============================================
+// TASKS
+// ============================================
+
+model Task {
+  id          String     @id @default(cuid())
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  title       String
+  description String?
+  dueDate     DateTime?
+  priority    TaskPriority @default(MEDIUM)
+  status      TaskStatus   @default(PENDING)
+
+  assignedTo  String?
+  completedAt DateTime?
+  completedBy String?
+
+  // Relations
+  intakeId    String?
+  intake      Intake?    @relation(fields: [intakeId], references: [id])
+
+  @@index([status])
+  @@index([dueDate])
+  @@index([assignedTo])
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+// ============================================
+// ACTIVITY LOG
+// ============================================
+
+model Activity {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  type      String   // call_started, call_ended, sms_sent, task_created, status_changed, etc.
+  actor     String?  // who performed the action (system, user email, etc.)
+  details   Json     @default("{}")
+
+  // Relations
+  intakeId  String?
+  intake    Intake?  @relation(fields: [intakeId], references: [id])
+
+  @@index([type])
+  @@index([createdAt])
+  @@index([intakeId])
+}
+
+// ============================================
+// SYSTEM SETTINGS
+// ============================================
+
+model Setting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+// ============================================
+// CALLBACK REQUESTS (Non-Intake Calls)
+// ============================================
+
+model CallbackRequest {
+  id          String   @id @default(cuid())
+  callId      String   @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Caller Information
+  callerPhone String
+  callerName  String?
+
+  // Request Details
+  purpose     String              // Why they're calling
+  category    CallbackCategory    @default(GENERAL)
+  priority    CallbackPriority    @default(NORMAL)
+  notes       String?             // Any additional info from the AI
+
+  // Transcript
+  transcript  Json     @default("[]")
+
+  // Follow-up
+  status            CallbackStatus @default(PENDING)
+  assignedTo        String?
+  callbackScheduled DateTime?
+  completedAt       DateTime?
+  completedBy       String?
+  resolution        String?
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([callerPhone])
+  @@index([category])
+}
+
+enum CallbackCategory {
+  GENERAL           // General inquiry
+  EXISTING_CLIENT   // Current client with questions
+  CASE_STATUS       // Asking about their case
+  BILLING           // Billing/payment questions
+  DOCUMENTS         // Need to send/receive documents
+  REFERRAL          // Referring someone
+  VENDOR            // Business/vendor call
+  OTHER
+}
+
+enum CallbackPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum CallbackStatus {
+  PENDING
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+// ============================================
+// ANALYTICS (Daily Aggregates)
+// ============================================
+
+model DailyStats {
+  id            String   @id @default(cuid())
+  date          DateTime @unique
+
+  totalCalls    Int      @default(0)
+  completedCalls Int     @default(0)
+  avgCallDuration Int?   // seconds
+  avgScore      Float?
+
+  highScoreCalls Int     @default(0)  // 70+
+  mediumScoreCalls Int   @default(0)  // 45-69
+  lowScoreCalls Int      @default(0)  // <45
+
+  smsSent       Int      @default(0)
+  callbacksScheduled Int @default(0)
+  casesAccepted Int      @default(0)
+  casesDeclined Int      @default(0)
+
+  @@index([date])
+}
