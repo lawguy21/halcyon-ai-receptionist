@@ -134,9 +134,9 @@ class Scheduler {
           callerPhone: intake.callerPhone,
           totalScore: intake.totalScore,
           isUrgent: intake.isUrgent,
-          conditions: intake.conditions || [],
-          caseStrengths: intake.caseStrengths || [],
-          caseConcerns: intake.caseConcerns || [],
+          conditions: Array.isArray(intake.conditions) ? intake.conditions as string[] : [],
+          caseStrengths: Array.isArray((intake as any).caseStrengths) ? (intake as any).caseStrengths : [],
+          caseConcerns: Array.isArray((intake as any).caseConcerns) ? (intake as any).caseConcerns : [],
           createdAt: intake.createdAt
         })),
         pendingMessages: messagesResult.requests.map(msg => ({

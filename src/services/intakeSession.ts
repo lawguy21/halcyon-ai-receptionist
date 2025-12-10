@@ -668,6 +668,13 @@ export class IntakeSession {
 
     try {
       // Save callback request to database
+      // Convert transcript format from {text} to {content} for database
+      const formattedTranscript = this.data.transcript.map(t => ({
+        role: t.role,
+        content: t.text,
+        timestamp: t.timestamp
+      }));
+
       const messageId = await db.saveCallbackRequest({
         callId: this.callId,
         callerPhone: phoneNumber || 'unknown',
@@ -676,7 +683,7 @@ export class IntakeSession {
         category,
         priority: isUrgent ? 'URGENT' : 'NORMAL',
         notes,
-        transcript: this.data.transcript
+        transcript: formattedTranscript
       });
 
       this.log.info({
