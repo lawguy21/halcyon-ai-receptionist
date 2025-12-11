@@ -56,6 +56,7 @@ export class OpenAIRealtimeClient {
   private isConnected = false;
   private pendingAudioChunks: string[] = [];
   private currentTranscript = '';
+  private audioChunkCount = 0;  // Track how many audio chunks we receive
 
   constructor(options: OpenAIRealtimeClientOptions) {
     this.options = options;
@@ -66,6 +67,15 @@ export class OpenAIRealtimeClient {
     return new Promise((resolve, reject) => {
       const url = `wss://api.openai.com/v1/realtime?model=${config.openai.realtimeModel}`;
 
+      // Log connection attempt with key details (mask most of API key for security)
+      const maskedKey = config.openai.apiKey.slice(0, 10) + '...' + config.openai.apiKey.slice(-4);
+      this.log.info({
+        event: 'openai_ws_connecting',
+        url,
+        model: config.openai.realtimeModel,
+        apiKeyPrefix: maskedKey
+      });
+
       this.ws = new WebSocket(url, {
         headers: {
           'Authorization': `Bearer ${config.openai.apiKey}`,
@@ -74,7 +84,7 @@ export class OpenAIRealtimeClient {
       });
 
       this.ws.on('open', () => {
-        this.log.info({ event: 'openai_ws_open' });
+        this.log.info({ event: 'openai_ws_open', message: 'WebSocket connected successfully' });
         this.isConnected = true;
         this.initializeSession();
         resolve();
@@ -103,8 +113,10 @@ export class OpenAIRealtimeClient {
   }
 
   private initializeSession(): void {
+    this.log.info({ event: 'initializing_session', voice: config.openai.voice });
+
     // Configure the session
-    this.send({
+    const sessionConfig = {
       type: 'session.update',
       session: {
         modalities: ['text', 'audio'],
@@ -126,17 +138,21 @@ export class OpenAIRealtimeClient {
         temperature: 0.4,           // Lower for more consistent, predictable responses
         max_response_output_tokens: 512  // Shorter responses = faster delivery
       }
-    });
+    };
+
+    this.log.info({ event: 'sending_session_update', config: { voice: config.openai.voice, modalities: ['text', 'audio'] } });
+    this.send(sessionConfig);
+    this.log.info({ event: 'session_update_sent' });
 
     // Note: The greeting will be triggered after session.updated is received
   }
 
   private triggerInitialGreeting(): void {
-    this.log.info({ event: 'triggering_initial_greeting' });
+    this.log.info({ event: 'triggering_initial_greeting', timestamp: new Date().toISOString() });
 
     // Start the conversation - Twilio already said "Hello, one moment please"
     // so OpenAI should continue naturally without repeating hello
-    this.send({
+    const conversationItem = {
       type: 'conversation.item.create',
       item: {
         type: 'message',
@@ -146,15 +162,23 @@ export class OpenAIRealtimeClient {
           text: '[SYSTEM: Call connected. The caller just heard "Hello, one moment please." Now introduce yourself and ask how you can help. Do NOT say hello again.]'
         }]
       }
-    });
+    };
+
+    this.log.info({ event: 'sending_conversation_item', message: 'Creating initial greeting prompt' });
+    this.send(conversationItem);
+    this.log.info({ event: 'conversation_item_sent' });
 
     // Trigger response with explicit audio modality
-    this.send({
+    const responseRequest = {
       type: 'response.create',
       response: {
         modalities: ['text', 'audio']
       }
-    });
+    };
+
+    this.log.info({ event: 'sending_response_create', message: 'Requesting audio response from OpenAI' });
+    this.send(responseRequest);
+    this.log.info({ event: 'response_create_sent', message: 'Now waiting for response.audio.delta events...' });
   }
 
   private handleMessage(data: string): void {
@@ -174,6 +198,13 @@ export class OpenAIRealtimeClient {
 
         case 'response.audio.delta':
           // Stream audio back to Twilio
+          this.audioChunkCount++;
+          if (this.audioChunkCount === 1) {
+            this.log.info({ event: 'first_audio_chunk_received', message: 'OpenAI is now streaming audio!' });
+          }
+          if (this.audioChunkCount % 50 === 0) {
+            this.log.debug({ event: 'audio_chunks_received', count: this.audioChunkCount });
+          }
           const audioDelta = event as unknown as AudioDelta;
           this.options.onAudioResponse(audioDelta.delta);
           break;

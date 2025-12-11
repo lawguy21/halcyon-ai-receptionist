@@ -57,6 +57,7 @@ export async function mediaStreamHandler(
   let streamSid: string | null = null;
   let openaiClient: OpenAIRealtimeClient | null = null;
   let intakeSession: IntakeSession | null = null;
+  let audioChunksSentToTwilio = 0;  // Track audio chunks sent to Twilio
 
   // Handle both direct WebSocket and SocketStream wrapper
   const twilioWs: WebSocket = 'socket' in connection ? connection.socket : connection;
@@ -75,6 +76,10 @@ export async function mediaStreamHandler(
   // Send audio to Twilio (from OpenAI)
   function sendAudioToTwilio(audioBase64: string) {
     if (streamSid && twilioWs.readyState === WebSocket.OPEN) {
+      audioChunksSentToTwilio++;
+      if (audioChunksSentToTwilio === 1) {
+        log.info({ event: 'first_audio_to_twilio', message: 'Sending first audio chunk to Twilio!' });
+      }
       twilioWs.send(JSON.stringify({
         event: 'media',
         streamSid,
@@ -82,6 +87,12 @@ export async function mediaStreamHandler(
           payload: audioBase64
         }
       }));
+    } else {
+      if (!streamSid) {
+        log.warn({ event: 'audio_send_failed', reason: 'No streamSid' });
+      } else {
+        log.warn({ event: 'audio_send_failed', reason: 'WebSocket not open', readyState: twilioWs.readyState });
+      }
     }
   }
 
