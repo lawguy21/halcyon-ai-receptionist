@@ -119,7 +119,7 @@ export class OpenAIRealtimeClient {
           type: 'server_vad',
           threshold: 0.5,           // Slightly higher = less sensitive to background noise
           prefix_padding_ms: 300,   // Capture more audio before detected speech
-          silence_duration_ms: 700  // Wait longer before assuming user is done (was 300)
+          silence_duration_ms: 300  // Quick response after user stops speaking
         },
         tools: INTAKE_TOOLS,
         tool_choice: 'auto',
