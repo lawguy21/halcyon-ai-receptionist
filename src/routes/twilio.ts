@@ -117,24 +117,26 @@ export async function twilioRoutes(app: FastifyInstance) {
       // Update call duration in database if intake exists
       // Note: Main finalization happens in mediaStream.ts on 'stop' event
       // This is a backup to ensure call duration is recorded
-      try {
-        const intake = await prisma.intake.findFirst({
-          where: { callId: { contains: body.CallSid.slice(-8) } }
-        });
+      if (prisma) {
+        try {
+          const intake = await prisma.intake.findFirst({
+            where: { callId: { contains: body.CallSid.slice(-8) } }
+          });
 
-        if (intake && body.CallDuration) {
-          await prisma.intake.update({
-            where: { id: intake.id },
-            data: { callDuration: parseInt(body.CallDuration, 10) }
-          });
-          logger.info({
-            event: 'call_duration_updated',
-            intakeId: intake.id,
-            duration: body.CallDuration
-          });
+          if (intake && body.CallDuration) {
+            await prisma.intake.update({
+              where: { id: intake.id },
+              data: { callDuration: parseInt(body.CallDuration, 10) }
+            });
+            logger.info({
+              event: 'call_duration_updated',
+              intakeId: intake.id,
+              duration: body.CallDuration
+            });
+          }
+        } catch (error) {
+          logger.error({ event: 'call_status_update_failed', error });
         }
-      } catch (error) {
-        logger.error({ event: 'call_status_update_failed', error });
       }
     }
 
@@ -161,44 +163,46 @@ export async function twilioRoutes(app: FastifyInstance) {
     });
 
     // Store recording URL in intake record
-    try {
-      // Find intake by partial callSid match (callId contains last 8 chars of callSid)
-      const intake = await prisma.intake.findFirst({
-        where: { callId: { contains: body.CallSid.slice(-8) } }
-      });
-
-      if (intake) {
-        await prisma.intake.update({
-          where: { id: intake.id },
-          data: { recordingUrl: body.RecordingUrl }
+    if (prisma) {
+      try {
+        // Find intake by partial callSid match (callId contains last 8 chars of callSid)
+        const intake = await prisma.intake.findFirst({
+          where: { callId: { contains: body.CallSid.slice(-8) } }
         });
 
-        // Log the activity
-        await prisma.activity.create({
-          data: {
-            intakeId: intake.id,
-            type: 'recording_saved',
-            actor: 'system',
-            details: {
-              recordingSid: body.RecordingSid,
-              duration: body.RecordingDuration
+        if (intake) {
+          await prisma.intake.update({
+            where: { id: intake.id },
+            data: { recordingUrl: body.RecordingUrl }
+          });
+
+          // Log the activity
+          await prisma.activity.create({
+            data: {
+              intakeId: intake.id,
+              type: 'recording_saved',
+              actor: 'system',
+              details: {
+                recordingSid: body.RecordingSid,
+                duration: body.RecordingDuration
+              }
             }
-          }
-        });
+          });
 
-        logger.info({
-          event: 'recording_url_saved',
-          intakeId: intake.id,
-          recordingSid: body.RecordingSid
-        });
-      } else {
-        logger.warn({
-          event: 'recording_no_matching_intake',
-          callSid: body.CallSid
-        });
+          logger.info({
+            event: 'recording_url_saved',
+            intakeId: intake.id,
+            recordingSid: body.RecordingSid
+          });
+        } else {
+          logger.warn({
+            event: 'recording_no_matching_intake',
+            callSid: body.CallSid
+          });
+        }
+      } catch (error) {
+        logger.error({ event: 'recording_save_failed', error });
       }
-    } catch (error) {
-      logger.error({ event: 'recording_save_failed', error });
     }
 
     return { received: true };
