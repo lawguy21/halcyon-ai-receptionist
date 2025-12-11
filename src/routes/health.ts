@@ -98,7 +98,7 @@ export async function healthRoutes(app: FastifyInstance) {
                   prefix_padding_ms: 300,
                   silence_duration_ms: 300
                 },
-                temperature: 0.4,
+                temperature: 0.6,  // OpenAI Realtime API minimum is 0.6
                 max_response_output_tokens: 100
               }
             }));

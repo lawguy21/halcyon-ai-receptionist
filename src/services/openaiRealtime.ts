@@ -135,7 +135,7 @@ export class OpenAIRealtimeClient {
         },
         tools: INTAKE_TOOLS,
         tool_choice: 'auto',
-        temperature: 0.4,           // Lower for more consistent, predictable responses
+        temperature: 0.6,           // OpenAI Realtime API minimum is 0.6
         max_response_output_tokens: 512  // Shorter responses = faster delivery
       }
     };
