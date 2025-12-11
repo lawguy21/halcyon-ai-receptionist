@@ -2,28 +2,50 @@
  * HALCYON AI RECEPTIONIST - DATABASE SERVICE
  *
  * Handles all database operations using Prisma
+ * DATABASE IS OPTIONAL - calls will work without persistence if DATABASE_URL is not set
  */
 
 import { PrismaClient, IntakeStatus, TaskPriority, TaskStatus, CallbackCategory, CallbackPriority } from '@prisma/client';
 import { IntakeResult } from './intakeSession.js';
 import { logger } from '../utils/logger.js';
 
-// Global Prisma client (singleton pattern)
-const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
+// Check if database is configured
+const isDatabaseConfigured = !!process.env.DATABASE_URL;
 
-export const prisma = globalForPrisma.prisma || new PrismaClient({
-  log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error']
-});
+// Global Prisma client (singleton pattern) - only create if DATABASE_URL exists
+const globalForPrisma = globalThis as unknown as { prisma: PrismaClient | null };
 
-if (process.env.NODE_ENV !== 'production') {
+export const prisma: PrismaClient | null = isDatabaseConfigured
+  ? (globalForPrisma.prisma || new PrismaClient({
+      log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error']
+    }))
+  : null;
+
+if (isDatabaseConfigured && process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = prisma;
+}
+
+if (!isDatabaseConfigured) {
+  logger.warn({ event: 'database_not_configured', message: 'DATABASE_URL not set - running without persistence' });
 }
 
 export class DatabaseService {
   /**
+   * Check if database is available
+   */
+  isAvailable(): boolean {
+    return isDatabaseConfigured && prisma !== null;
+  }
+
+  /**
    * Save a completed intake record
    */
   async saveIntake(result: IntakeResult): Promise<string> {
+    if (!prisma) {
+      logger.warn({ event: 'intake_not_saved', reason: 'Database not configured' });
+      return `NOSAVE_${result.intakeId}`;
+    }
+
     try {
       const intake = await prisma.intake.create({
         data: {
@@ -156,6 +178,7 @@ export class DatabaseService {
    * Get intake by ID
    */
   async getIntake(id: string) {
+    if (!prisma) return null;
     return prisma.intake.findUnique({
       where: { id },
       include: {
@@ -172,6 +195,7 @@ export class DatabaseService {
    * Get intake by call ID
    */
   async getIntakeByCallId(callId: string) {
+    if (!prisma) return null;
     return prisma.intake.findUnique({
       where: { callId }
     });
@@ -193,6 +217,7 @@ export class DatabaseService {
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
   }) {
+    if (!prisma) return { intakes: [], pagination: { page: 1, pageSize: 20, total: 0, totalPages: 0 } };
     const {
       status,
       minScore,
@@ -284,6 +309,7 @@ export class DatabaseService {
     disposition?: string,
     notes?: string
   ) {
+    if (!prisma) return null;
     const intake = await prisma.intake.update({
       where: { id },
       data: {
@@ -307,6 +333,7 @@ export class DatabaseService {
    * Update SMS sent status
    */
   async markSmsSent(id: string) {
+    if (!prisma) return null;
     return prisma.intake.update({
       where: { id },
       data: {
@@ -327,6 +354,7 @@ export class DatabaseService {
     dueDate?: Date;
     assignedTo?: string;
   }) {
+    if (!prisma) return null;
     return prisma.task.create({
       data: {
         intakeId: params.intakeId,
@@ -349,6 +377,7 @@ export class DatabaseService {
     priority?: TaskPriority;
     dueBefore?: Date;
   }) {
+    if (!prisma) return [];
     const where: Record<string, unknown> = {};
 
     if (params.status) where.status = params.status;
@@ -380,6 +409,7 @@ export class DatabaseService {
    * Complete a task
    */
   async completeTask(id: string, completedBy: string) {
+    if (!prisma) return null;
     return prisma.task.update({
       where: { id },
       data: {
@@ -399,6 +429,7 @@ export class DatabaseService {
     actor: string,
     details: Record<string, unknown> = {}
   ) {
+    if (!prisma) return null;
     return prisma.activity.create({
       data: {
         intakeId,
@@ -413,6 +444,17 @@ export class DatabaseService {
    * Get dashboard stats
    */
   async getDashboardStats(startDate?: Date, endDate?: Date) {
+    if (!prisma) {
+      return {
+        totalIntakes: 0,
+        statusCounts: {},
+        scoreBuckets: [],
+        avgScore: 0,
+        recentIntakes: [],
+        pendingTasks: 0,
+        urgentCases: 0
+      };
+    }
     const where: Record<string, unknown> = {};
 
     if (startDate || endDate) {
@@ -508,6 +550,7 @@ export class DatabaseService {
    * Update daily stats
    */
   private async updateDailyStats(result: IntakeResult) {
+    if (!prisma) return;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -560,6 +603,10 @@ export class DatabaseService {
     notes?: string;
     transcript?: Array<{ role: string; content: string; timestamp: Date }>;
   }): Promise<string> {
+    if (!prisma) {
+      logger.warn({ event: 'callback_not_saved', reason: 'Database not configured' });
+      return `NOSAVE_${params.callId}`;
+    }
     try {
       // Map category string to enum
       const categoryMap: Record<string, CallbackCategory> = {
@@ -632,6 +679,7 @@ export class DatabaseService {
    * Get callback request by ID
    */
   async getCallbackRequest(id: string) {
+    if (!prisma) return null;
     return prisma.callbackRequest.findUnique({
       where: { id }
     });
@@ -647,6 +695,7 @@ export class DatabaseService {
     page?: number;
     pageSize?: number;
   }) {
+    if (!prisma) return { requests: [], pagination: { page: 1, pageSize: 20, total: 0, totalPages: 0 } };
     const {
       status,
       category,
@@ -693,6 +742,7 @@ export class DatabaseService {
     completedBy?: string,
     resolution?: string
   ) {
+    if (!prisma) return null;
     return prisma.callbackRequest.update({
       where: { id },
       data: {
