@@ -34,8 +34,8 @@ export const config = {
 
   openai: {
     apiKey: requireEnv('OPENAI_API_KEY'),
-    realtimeModel: optionalEnv('OPENAI_REALTIME_MODEL', 'gpt-4o-realtime-preview-2024-10-01'),
-    voice: optionalEnv('OPENAI_VOICE', 'alloy') as 'alloy' | 'echo' | 'shimmer'
+    realtimeModel: optionalEnv('OPENAI_REALTIME_MODEL', 'gpt-4o-realtime-preview-2024-12-17'),
+    voice: optionalEnv('OPENAI_VOICE', 'alloy') as 'alloy' | 'echo' | 'shimmer' | 'ash' | 'ballad' | 'coral' | 'sage' | 'verse'
   },
 
   firm: {
