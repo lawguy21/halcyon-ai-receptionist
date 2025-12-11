@@ -117,14 +117,14 @@ export class OpenAIRealtimeClient {
         },
         turn_detection: {
           type: 'server_vad',
-          threshold: 0.4,
-          prefix_padding_ms: 200,
-          silence_duration_ms: 300
+          threshold: 0.5,           // Slightly higher = less sensitive to background noise
+          prefix_padding_ms: 300,   // Capture more audio before detected speech
+          silence_duration_ms: 700  // Wait longer before assuming user is done (was 300)
         },
         tools: INTAKE_TOOLS,
         tool_choice: 'auto',
-        temperature: 0.6,
-        max_response_output_tokens: 1024
+        temperature: 0.4,           // Lower for more consistent, predictable responses
+        max_response_output_tokens: 512  // Shorter responses = faster delivery
       }
     });
 
