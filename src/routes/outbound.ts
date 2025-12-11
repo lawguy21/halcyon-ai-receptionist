@@ -127,26 +127,12 @@ export async function outboundRoutes(app: FastifyInstance) {
 
     const response = new VoiceResponse();
 
-    // Greeting based on purpose
-    const greetings: Record<string, string> = {
-      'return_call': 'Hello, this is a return call from the law office. How can I help you today?',
-      'update_medical': 'Hello, this is a call from the law office to update your medical information on file. Do you have a moment to answer a few questions?',
-      'perform_intake': 'Hello, this is a call from the law office regarding your disability case inquiry. I would like to gather some information to help evaluate your case. Is this a good time?',
-      'schedule_appointment': 'Hello, this is a call from the law office to schedule or confirm your appointment. Do you have a moment?',
-      'follow_up': 'Hello, this is a follow-up call from the law office regarding your case. How can I assist you today?',
-      'custom': 'Hello, this is a call from the law office. How can I help you today?'
-    };
+    // NOTE: We removed the TwiML <Say> greeting because OpenAI Realtime
+    // handles the greeting itself via triggerInitialGreeting().
+    // This eliminates the "double greeting" issue and ensures a smoother
+    // conversation flow. The purpose is passed to OpenAI via query params.
 
-    const greeting = greetings[purpose] || greetings['follow_up'];
-
-    // Initial AI greeting
-    response.say({
-      voice: 'Google.en-US-Neural2-F'
-    }, greeting);
-
-    response.pause({ length: 1 });
-
-    // Connect to Media Stream for real-time AI audio
+    // Connect immediately to Media Stream for real-time AI audio
     const connect = response.connect();
 
     // Build WebSocket URL with call metadata
