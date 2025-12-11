@@ -49,6 +49,10 @@ export interface OpenAIRealtimeClientOptions {
   onClose: () => void;
 }
 
+// Silence timeout - how long to wait before re-prompting if user doesn't respond
+const SILENCE_TIMEOUT_MS = 5000; // 5 seconds
+const MAX_SILENCE_PROMPTS = 3;   // Max times to re-prompt before giving up
+
 export class OpenAIRealtimeClient {
   private ws: WebSocket | null = null;
   private options: OpenAIRealtimeClientOptions;
@@ -57,6 +61,8 @@ export class OpenAIRealtimeClient {
   private pendingAudioChunks: string[] = [];
   private currentTranscript = '';
   private audioChunkCount = 0;  // Track how many audio chunks we receive
+  private silenceTimeout: NodeJS.Timeout | null = null;
+  private silencePromptCount = 0;  // Track how many times we've re-prompted
 
   constructor(options: OpenAIRealtimeClientOptions) {
     this.options = options;
@@ -229,10 +235,11 @@ export class OpenAIRealtimeClient {
           break;
 
         case 'conversation.item.input_audio_transcription.completed':
-          // User's speech transcript
+          // User's speech transcript - reset silence counter since they spoke
           const userTranscript = event as TranscriptDelta;
           if (userTranscript.transcript) {
             this.options.onTranscript('user', userTranscript.transcript);
+            this.resetSilenceCounter(); // User successfully responded
           }
           break;
 
@@ -242,8 +249,9 @@ export class OpenAIRealtimeClient {
           break;
 
         case 'input_audio_buffer.speech_started':
-          // User started speaking - potential interruption
+          // User started speaking - cancel silence timeout
           this.log.debug({ event: 'user_speech_started' });
+          this.clearSilenceTimeout();
           break;
 
         case 'input_audio_buffer.speech_stopped':
@@ -252,6 +260,8 @@ export class OpenAIRealtimeClient {
 
         case 'response.done':
           this.log.debug({ event: 'response_complete' });
+          // Start silence timeout - if user doesn't respond within X seconds, re-prompt
+          this.startSilenceTimeout();
           break;
 
         case 'rate_limits.updated':
@@ -380,7 +390,72 @@ export class OpenAIRealtimeClient {
     }
   }
 
+  // Silence timeout handling - re-prompt if user doesn't respond
+  private startSilenceTimeout(): void {
+    this.clearSilenceTimeout();
+
+    if (this.silencePromptCount >= MAX_SILENCE_PROMPTS) {
+      this.log.info({ event: 'max_silence_prompts_reached', count: this.silencePromptCount });
+      return; // Don't keep prompting forever
+    }
+
+    this.silenceTimeout = setTimeout(() => {
+      this.handleSilenceTimeout();
+    }, SILENCE_TIMEOUT_MS);
+
+    this.log.debug({ event: 'silence_timer_started', timeout_ms: SILENCE_TIMEOUT_MS });
+  }
+
+  private clearSilenceTimeout(): void {
+    if (this.silenceTimeout) {
+      clearTimeout(this.silenceTimeout);
+      this.silenceTimeout = null;
+      this.log.debug({ event: 'silence_timer_cleared' });
+    }
+  }
+
+  private handleSilenceTimeout(): void {
+    this.silencePromptCount++;
+    this.log.info({ event: 'silence_timeout_triggered', prompt_count: this.silencePromptCount });
+
+    // Send a gentle prompt to get the user to respond
+    const prompts = [
+      "I'm still here. Are you there? Take your time.",
+      "Hello? I want to make sure I can hear you clearly.",
+      "I'm having trouble hearing you. Can you try speaking again?"
+    ];
+
+    const promptText = prompts[Math.min(this.silencePromptCount - 1, prompts.length - 1)];
+
+    // Create a system message asking AI to re-prompt
+    this.send({
+      type: 'conversation.item.create',
+      item: {
+        type: 'message',
+        role: 'user',
+        content: [{
+          type: 'input_text',
+          text: `[SYSTEM: The caller has been silent for ${SILENCE_TIMEOUT_MS / 1000} seconds. Gently check if they're still there and repeat your last question. Say something like: "${promptText}"]`
+        }]
+      }
+    });
+
+    // Trigger a response
+    this.send({
+      type: 'response.create',
+      response: {
+        modalities: ['text', 'audio']
+      }
+    });
+  }
+
+  // Reset silence counter when user actually responds
+  private resetSilenceCounter(): void {
+    this.silencePromptCount = 0;
+  }
+
   close(): void {
+    this.clearSilenceTimeout();
     if (this.ws) {
       this.ws.close();
       this.ws = null;
