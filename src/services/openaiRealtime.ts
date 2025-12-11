@@ -134,7 +134,8 @@ export class OpenAIRealtimeClient {
   private triggerInitialGreeting(): void {
     this.log.info({ event: 'triggering_initial_greeting' });
 
-    // Start the conversation with greeting
+    // Start the conversation - Twilio already said "Hello, one moment please"
+    // so OpenAI should continue naturally without repeating hello
     this.send({
       type: 'conversation.item.create',
       item: {
@@ -142,7 +143,7 @@ export class OpenAIRealtimeClient {
         role: 'user',
         content: [{
           type: 'input_text',
-          text: '[SYSTEM: Call connected. Begin the intake conversation with your greeting.]'
+          text: '[SYSTEM: Call connected. The caller just heard "Hello, one moment please." Now introduce yourself and ask how you can help. Do NOT say hello again.]'
         }]
       }
     });

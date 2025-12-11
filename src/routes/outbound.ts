@@ -127,12 +127,14 @@ export async function outboundRoutes(app: FastifyInstance) {
 
     const response = new VoiceResponse();
 
-    // NOTE: We removed the TwiML <Say> greeting because OpenAI Realtime
-    // handles the greeting itself via triggerInitialGreeting().
-    // This eliminates the "double greeting" issue and ensures a smoother
-    // conversation flow. The purpose is passed to OpenAI via query params.
+    // Brief connection message while OpenAI establishes its WebSocket
+    // This prevents awkward silence during the ~1-2 second connection time
+    // OpenAI will then take over with its full conversation
+    response.say({
+      voice: 'Google.en-US-Neural2-F'
+    }, 'Hello, one moment please.');
 
-    // Connect immediately to Media Stream for real-time AI audio
+    // Connect to Media Stream for real-time AI audio
     const connect = response.connect();
 
     // Build WebSocket URL with call metadata
