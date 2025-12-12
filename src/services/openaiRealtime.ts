@@ -135,9 +135,9 @@ export class OpenAIRealtimeClient {
         },
         turn_detection: {
           type: 'server_vad',
-          threshold: 0.5,           // Slightly higher = less sensitive to background noise
-          prefix_padding_ms: 300,   // Capture more audio before detected speech
-          silence_duration_ms: 300  // Quick response after user stops speaking
+          threshold: 0.6,           // Higher = less sensitive to background noise (avoid false triggers)
+          prefix_padding_ms: 400,   // Capture more audio before detected speech
+          silence_duration_ms: 800  // Wait 800ms of silence before responding (more natural conversation pace)
         },
         tools: INTAKE_TOOLS,
         tool_choice: 'auto',
