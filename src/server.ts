@@ -20,6 +20,7 @@ import { dashboardRoutes } from './routes/dashboard.js';
 import { outboundRoutes } from './routes/outbound.js';
 import { mediaStreamHandler } from './handlers/mediaStream.js';
 import { healthRoutes } from './routes/health.js';
+import { seedRoutes } from './routes/seed.js';
 import { scheduler } from './services/scheduler.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -55,6 +56,7 @@ async function start() {
     await app.register(twilioRoutes, { prefix: '/twilio' });
     await app.register(dashboardRoutes, { prefix: '/api/dashboard' });
     await app.register(outboundRoutes, { prefix: '/api' });
+    await app.register(seedRoutes);
 
     // WebSocket route for Twilio Media Streams
     app.get('/media-stream', { websocket: true }, mediaStreamHandler as any);
