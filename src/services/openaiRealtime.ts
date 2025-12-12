@@ -50,7 +50,7 @@ export interface OpenAIRealtimeClientOptions {
 }
 
 // Silence timeout - how long to wait before re-prompting if user doesn't respond
-const SILENCE_TIMEOUT_MS = 5000; // 5 seconds
+const SILENCE_TIMEOUT_MS = 12000; // 12 seconds (doubled from 5s to give caller more time)
 const MAX_SILENCE_PROMPTS = 3;   // Max times to re-prompt before giving up
 
 export class OpenAIRealtimeClient {
@@ -135,9 +135,9 @@ export class OpenAIRealtimeClient {
         },
         turn_detection: {
           type: 'server_vad',
-          threshold: 0.6,           // Higher = less sensitive to background noise (avoid false triggers)
-          prefix_padding_ms: 400,   // Capture more audio before detected speech
-          silence_duration_ms: 800  // Wait 800ms of silence before responding (more natural conversation pace)
+          threshold: 0.7,           // Higher = less sensitive to background noise (avoid false triggers)
+          prefix_padding_ms: 500,   // Capture more audio before detected speech
+          silence_duration_ms: 1600 // Wait 1.6 seconds of silence before responding (give caller time to think)
         },
         tools: INTAKE_TOOLS,
         tool_choice: 'auto',

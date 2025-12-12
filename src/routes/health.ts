@@ -94,9 +94,9 @@ export async function healthRoutes(app: FastifyInstance) {
                 output_audio_format: 'g711_ulaw',
                 turn_detection: {
                   type: 'server_vad',
-                  threshold: 0.6,
-                  prefix_padding_ms: 400,
-                  silence_duration_ms: 800
+                  threshold: 0.7,
+                  prefix_padding_ms: 500,
+                  silence_duration_ms: 1600
                 },
                 temperature: 0.6,  // OpenAI Realtime API minimum is 0.6
                 max_response_output_tokens: 100
