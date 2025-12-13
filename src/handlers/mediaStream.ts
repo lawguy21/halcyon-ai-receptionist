@@ -10,6 +10,7 @@ import type { FastifyRequest } from 'fastify';
 import { createCallLogger } from '../utils/logger.js';
 import { OpenAIRealtimeClient } from '../services/openaiRealtime.js';
 import { IntakeSession } from '../services/intakeSession.js';
+import { hangupCall } from '../services/twilioService.js';
 
 // Type for fastify-websocket connection
 interface SocketStream {
@@ -47,6 +48,7 @@ export async function mediaStreamHandler(
 ) {
   const query = request.query as Record<string, string>;
   const callId = query.callId || `HC_${Date.now()}`;
+  const callSid = query.callSid || ''; // Twilio Call SID for hangup
   const callerPhone = query.callerPhone || 'unknown';
   const callerCity = query.callerCity || '';
   const callerState = query.callerState || '';
@@ -151,6 +153,16 @@ export async function mediaStreamHandler(
                 if (name === 'end_call' || name === 'record_callback_request') {
                   if (openaiClient) {
                     openaiClient.markCallEnding();
+                  }
+
+                  // Hang up the call after a short delay (let goodbye finish playing)
+                  // This runs asynchronously so it doesn't block the function result
+                  if (callSid) {
+                    log.info({ event: 'scheduling_hangup', callSid });
+                    // 4 second delay to let AI finish saying goodbye
+                    hangupCall(callSid, 4000).catch(err => {
+                      log.error({ event: 'hangup_error', error: err });
+                    });
                   }
                 }
 
