@@ -50,8 +50,10 @@ export interface OpenAIRealtimeClientOptions {
 }
 
 // Silence timeout - how long to wait before re-prompting if user doesn't respond
-const SILENCE_TIMEOUT_MS = 12000; // 12 seconds (doubled from 5s to give caller more time)
-const MAX_SILENCE_PROMPTS = 3;   // Max times to re-prompt before giving up
+// First prompt waits longer (20s), subsequent prompts wait 15s
+const FIRST_SILENCE_TIMEOUT_MS = 20000; // 20 seconds for first re-prompt (give caller plenty of time)
+const SILENCE_TIMEOUT_MS = 15000; // 15 seconds for subsequent prompts
+const MAX_SILENCE_PROMPTS = 2;   // Max times to re-prompt before giving up (reduced from 3)
 
 export class OpenAIRealtimeClient {
   private ws: WebSocket | null = null;
@@ -63,6 +65,7 @@ export class OpenAIRealtimeClient {
   private audioChunkCount = 0;  // Track how many audio chunks we receive
   private silenceTimeout: NodeJS.Timeout | null = null;
   private silencePromptCount = 0;  // Track how many times we've re-prompted
+  private callEnding = false;  // Flag to prevent re-prompts after call conclusion
 
   constructor(options: OpenAIRealtimeClientOptions) {
     this.options = options;
@@ -394,16 +397,25 @@ export class OpenAIRealtimeClient {
   private startSilenceTimeout(): void {
     this.clearSilenceTimeout();
 
+    // Don't start silence timer if call is ending (prevents "I'm still here" after goodbye)
+    if (this.callEnding) {
+      this.log.debug({ event: 'silence_timer_skipped', reason: 'call_ending' });
+      return;
+    }
+
     if (this.silencePromptCount >= MAX_SILENCE_PROMPTS) {
       this.log.info({ event: 'max_silence_prompts_reached', count: this.silencePromptCount });
       return; // Don't keep prompting forever
     }
 
+    // Use longer timeout for first prompt, shorter for subsequent
+    const timeoutMs = this.silencePromptCount === 0 ? FIRST_SILENCE_TIMEOUT_MS : SILENCE_TIMEOUT_MS;
+
     this.silenceTimeout = setTimeout(() => {
       this.handleSilenceTimeout();
-    }, SILENCE_TIMEOUT_MS);
+    }, timeoutMs);
 
-    this.log.debug({ event: 'silence_timer_started', timeout_ms: SILENCE_TIMEOUT_MS });
+    this.log.debug({ event: 'silence_timer_started', timeout_ms: timeoutMs, prompt_count: this.silencePromptCount });
   }
 
   private clearSilenceTimeout(): void {
@@ -415,14 +427,20 @@ export class OpenAIRealtimeClient {
   }
 
   private handleSilenceTimeout(): void {
+    // Double-check call isn't ending (in case timing edge case)
+    if (this.callEnding) {
+      this.log.debug({ event: 'silence_timeout_skipped', reason: 'call_ending' });
+      return;
+    }
+
     this.silencePromptCount++;
-    this.log.info({ event: 'silence_timeout_triggered', prompt_count: this.silencePromptCount });
+    const timeoutUsed = this.silencePromptCount === 1 ? FIRST_SILENCE_TIMEOUT_MS : SILENCE_TIMEOUT_MS;
+    this.log.info({ event: 'silence_timeout_triggered', prompt_count: this.silencePromptCount, timeout_ms: timeoutUsed });
 
     // Send a gentle prompt to get the user to respond
     const prompts = [
-      "I'm still here. Are you there? Take your time.",
-      "Hello? I want to make sure I can hear you clearly.",
-      "I'm having trouble hearing you. Can you try speaking again?"
+      "Are you still there? Take your time, I'm listening.",
+      "Hello? I want to make sure we're still connected."
     ];
 
     const promptText = prompts[Math.min(this.silencePromptCount - 1, prompts.length - 1)];
@@ -435,7 +453,7 @@ export class OpenAIRealtimeClient {
         role: 'user',
         content: [{
           type: 'input_text',
-          text: `[SYSTEM: The caller has been silent for ${SILENCE_TIMEOUT_MS / 1000} seconds. Gently check if they're still there and repeat your last question. Say something like: "${promptText}"]`
+          text: `[SYSTEM: The caller has been quiet. Very gently check if they're still there. Say something natural like: "${promptText}" Then wait patiently for their response.]`
         }]
       }
     });
@@ -452,6 +470,16 @@ export class OpenAIRealtimeClient {
   // Reset silence counter when user actually responds
   private resetSilenceCounter(): void {
     this.silencePromptCount = 0;
+  }
+
+  /**
+   * Mark the call as ending - prevents further silence prompts
+   * Call this when the AI says goodbye or the call is concluding
+   */
+  markCallEnding(): void {
+    this.callEnding = true;
+    this.clearSilenceTimeout();
+    this.log.info({ event: 'call_marked_ending', message: 'Silence prompts disabled for call conclusion' });
   }
 
   close(): void {

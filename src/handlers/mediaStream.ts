@@ -145,6 +145,15 @@ export async function mediaStreamHandler(
               },
               onFunctionCall: async (name, args) => {
                 log.info({ event: 'function_call', name, args });
+
+                // If this is an end_call or callback request, mark the call as ending
+                // to prevent further "I'm still here" prompts
+                if (name === 'end_call' || name === 'record_callback_request') {
+                  if (openaiClient) {
+                    openaiClient.markCallEnding();
+                  }
+                }
+
                 if (intakeSession) {
                   return await intakeSession.handleFunctionCall(name, args);
                 }
